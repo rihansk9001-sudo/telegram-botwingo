@@ -9,16 +9,7 @@ import random
 import io
 from PIL import Image, ImageDraw, ImageFont
 
-# ================= 0. MAGIC COLOR FIX =================
-original_to_dict = InlineKeyboardButton.to_dict
-def custom_to_dict(self):
-    d = original_to_dict(self)
-    if hasattr(self, 'style'):
-        d['style'] = self.style
-    return d
-InlineKeyboardButton.to_dict = custom_to_dict
-
-# ================= 1. NEW TOKENS & CONFIG =================
+# ================= 1. NAYE TOKENS & CONFIG =================
 MAIN_TOKEN = "8212871280:AAHHsiW9snxpv6g7pdY-ManWIVxuemFbWW4"
 FINANCE_TOKEN = "8684764660:AAFBsBCtxbu7m0ccAk4Lu1QADZicgH-dfNc"
 PREDICTION_TOKEN = "8781003969:AAFysf9fPDa2_ptakcU8sVOcZI2UTRid2cc" 
@@ -50,7 +41,7 @@ def safe_answer(call, bot=bot_main):
 # ================= 2. SUPER FAST SQLITE SETUP =================
 def get_db():
     conn = sqlite3.connect('wingo_platform.db', check_same_thread=False)
-    conn.execute("PRAGMA journal_mode=WAL;") # Prevents Database Locked Errors
+    conn.execute("PRAGMA journal_mode=WAL;")
     return conn
 
 def init_db():
@@ -96,9 +87,10 @@ def update_user(user_id, **kwargs):
 def admin_panel(message):
     if message.from_user.id != ADMIN_ID: return
     markup = InlineKeyboardMarkup()
-    markup.row(InlineKeyboardButton("➕ Add Channel", callback_data="admin_add_channel", **{'style': 'primary'}), 
-               InlineKeyboardButton("💼 My Wallet", callback_data="admin_wallet", **{'style': 'success'}))
-    markup.row(InlineKeyboardButton("📢 Broadcast", callback_data="admin_broadcast", **{'style': 'danger'}))
+    # Adding colors directly to admin panel buttons too
+    markup.row(InlineKeyboardButton("➕ Add Channel", callback_data="admin_add_channel", style="primary"), 
+               InlineKeyboardButton("💼 My Wallet", callback_data="admin_wallet", style="success"))
+    markup.row(InlineKeyboardButton("📢 Broadcast", callback_data="admin_broadcast", style="danger"))
     
     admin_text = (
         "🛠️ *BOSS ADMIN PANEL*\n\n"
@@ -197,8 +189,11 @@ def verify_admin_and_ask_color(message):
 
             update_user(ADMIN_ID, state="wait_color", temp_data=f"{chat_id}|{chat_info.title}|{invite_link}")
             markup = InlineKeyboardMarkup()
-            markup.row(InlineKeyboardButton("GREEN", callback_data="setcol_success", **{'style': 'success'}), InlineKeyboardButton("RED", callback_data="setcol_danger", **{'style': 'danger'}))
-            markup.row(InlineKeyboardButton("BLUE", callback_data="setcol_primary", **{'style': 'primary'}), InlineKeyboardButton("NORMAL", callback_data="setcol_normal")) 
+            # Yahan admin se channel ka color pucha jayega
+            markup.row(InlineKeyboardButton("GREEN", callback_data="setcol_success", style="success"), 
+                       InlineKeyboardButton("RED", callback_data="setcol_danger", style="danger"))
+            markup.row(InlineKeyboardButton("BLUE", callback_data="setcol_primary", style="primary"), 
+                       InlineKeyboardButton("NORMAL", callback_data="setcol_normal")) 
             bot_main.send_message(ADMIN_ID, f"✅ Bot '{chat_info.title}' mein Admin hai!\nJoin Button ka **Color** select karein:", reply_markup=markup)
         else: bot_main.send_message(ADMIN_ID, "❌ *Error:* Bot channel mein Administrator nahi hai.", parse_mode="Markdown")
     except Exception as e: bot_main.send_message(ADMIN_ID, f"❌ *Error:* {e}", parse_mode="Markdown")
@@ -207,14 +202,14 @@ def verify_admin_and_ask_color(message):
 def save_channel_final(call):
     safe_answer(call)
     try:
-        color_style = call.data.split("_")[1]
+        color_style = call.data.split("_")[1] # success, danger, primary, ya normal
         _, _, temp_data, _ = get_user(ADMIN_ID)
         if temp_data:
             chat_id, title, invite_link = temp_data.split("|")
             conn = get_db(); c = conn.cursor()
             c.execute("REPLACE INTO channels (chat_id, name, color, invite_link) VALUES (?, ?, ?, ?)", (chat_id, title, color_style, invite_link))
             conn.commit(); conn.close()
-            bot_main.edit_message_text(f"✅ Channel '{title}' add ho gaya!", call.message.chat.id, call.message.message_id)
+            bot_main.edit_message_text(f"✅ Channel '{title}' add ho gaya! (Color: {color_style.upper()})", call.message.chat.id, call.message.message_id)
             update_user(ADMIN_ID, state="idle", temp_data="")
     except Exception as e: bot_main.send_message(call.message.chat.id, f"⚠️ Error: {e}")
 
@@ -253,9 +248,12 @@ def user_start(message):
     if not_joined:
         markup = InlineKeyboardMarkup()
         for name, color, invite_link in not_joined:
-            if color in ['success', 'danger', 'primary']: markup.add(InlineKeyboardButton(f"Join {name}", url=invite_link, **{'style': color}))
-            else: markup.add(InlineKeyboardButton(f"Join {name}", url=invite_link))
-        markup.add(InlineKeyboardButton("🔄 Try Again", callback_data="check_join", **{'style': 'primary'}))
+            # Channel join buttons using the saved color style
+            if color in ['success', 'danger', 'primary']: 
+                markup.add(InlineKeyboardButton(f"Join {name}", url=invite_link, style=color))
+            else: 
+                markup.add(InlineKeyboardButton(f"Join {name}", url=invite_link))
+        markup.add(InlineKeyboardButton("🔄 Try Again", callback_data="check_join", style="primary"))
         bot_main.send_photo(user_id, photo='https://files.catbox.moe/my6qos.jpg', caption="⚠️ Aage badhne ke liye sabhi channels Join karein!", reply_markup=markup)
     else: send_main_menu(user_id, message.from_user.first_name)
 
@@ -269,13 +267,14 @@ def send_main_menu(user_id, name):
     balance, _, _, _ = get_user(user_id)
     text = f"✨ *Hello {name}!* ✨\n\n💰 *Your Balance:* `₹{balance}`\n━━━━━━━━━━━━━━━━━━\n🚀 *Apna Game Mode chunein aur Earning shuru karein!*"
     markup = InlineKeyboardMarkup()
-    markup.row(InlineKeyboardButton("⏱ 1 MIN", callback_data="wingo_1", **{'style': 'primary'}), InlineKeyboardButton("⏳ 2 MIN", callback_data="wingo_2", **{'style': 'primary'}))
-    markup.row(InlineKeyboardButton("🕒 3 MIN", callback_data="wingo_3", **{'style': 'primary'}), InlineKeyboardButton("🕓 5 MIN", callback_data="wingo_5", **{'style': 'primary'}))
-    markup.row(InlineKeyboardButton("🕔 15 MIN", callback_data="wingo_15", **{'style': 'primary'}))
-    markup.row(InlineKeyboardButton("💳 DEPOSIT", callback_data="deposit", **{'style': 'success'}), InlineKeyboardButton("📤 WITHDRAW", callback_data="withdraw", **{'style': 'danger'}))
-    markup.row(InlineKeyboardButton("📜 MY BETS", callback_data="history", **{'style': 'primary'}), InlineKeyboardButton("👥 REFER & EARN", callback_data="refer", **{'style': 'success'}))
-    markup.row(InlineKeyboardButton("👤 PROFILE", callback_data="profile", **{'style': 'primary'}), InlineKeyboardButton("🎧 SUPPORT", callback_data="support", **{'style': 'danger'}))
-    markup.row(InlineKeyboardButton("🎁 PROMO CODE", callback_data="promo_menu", **{'style': 'success'}))
+    # Colored Main Menu Buttons
+    markup.row(InlineKeyboardButton("⏱ 1 MIN", callback_data="wingo_1", style="primary"), InlineKeyboardButton("⏳ 2 MIN", callback_data="wingo_2", style="primary"))
+    markup.row(InlineKeyboardButton("🕒 3 MIN", callback_data="wingo_3", style="primary"), InlineKeyboardButton("🕓 5 MIN", callback_data="wingo_5", style="primary"))
+    markup.row(InlineKeyboardButton("🕔 15 MIN", callback_data="wingo_15", style="primary"))
+    markup.row(InlineKeyboardButton("💳 DEPOSIT", callback_data="deposit", style="success"), InlineKeyboardButton("📤 WITHDRAW", callback_data="withdraw", style="danger"))
+    markup.row(InlineKeyboardButton("📜 MY BETS", callback_data="history", style="primary"), InlineKeyboardButton("👥 REFER & EARN", callback_data="refer", style="success"))
+    markup.row(InlineKeyboardButton("👤 PROFILE", callback_data="profile", style="primary"), InlineKeyboardButton("🎧 SUPPORT", callback_data="support", style="danger"))
+    markup.row(InlineKeyboardButton("🎁 PROMO CODE", callback_data="promo_menu", style="success"))
     bot_main.send_message(user_id, text, reply_markup=markup, parse_mode="Markdown")
 
 @bot_main.callback_query_handler(func=lambda call: call.data in ["refer", "profile", "support", "promo_menu"])
@@ -286,15 +285,15 @@ def extra_menus(call):
         if call.data == "refer":
             bot_link = f"https://t.me/{BOT_USERNAME}?start={user_id}"
             text = f"🎁 *REFER & EARN* 🎁\n\nApne doston ko invite karein!\n🎉 *15 Referrals = ₹15 Bonus*\n\n📊 *Aapke Referrals:* `{ref_count} / 15`\n\n🔗 *Aapka Invite Link:*\n`{bot_link}`"
-            markup = InlineKeyboardMarkup().add(InlineKeyboardButton("🎁 CLAIM ₹15 BONUS", callback_data="claim_referral", **{'style': 'success'})).add(InlineKeyboardButton("🔙 Back", callback_data="back_main", **{'style': 'danger'}))
+            markup = InlineKeyboardMarkup().add(InlineKeyboardButton("🎁 CLAIM ₹15 BONUS", callback_data="claim_referral", style="success")).add(InlineKeyboardButton("🔙 Back", callback_data="back_main", style="danger"))
             bot_main.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
         elif call.data == "profile":
             text = f"👤 *MY PROFILE* 👤\n\n🆔 *User ID:* `{user_id}`\n💰 *Total Balance:* `₹{balance}`\n👥 *Total Refs:* `{ref_count}`\n🏅 *Status:* Active User"
-            markup = InlineKeyboardMarkup().add(InlineKeyboardButton("🔙 Back", callback_data="back_main", **{'style': 'danger'}))
+            markup = InlineKeyboardMarkup().add(InlineKeyboardButton("🔙 Back", callback_data="back_main", style="danger"))
             bot_main.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
         elif call.data == "support":
             text = f"🎧 *CUSTOMER SUPPORT* 🎧\n\nAgar aapko Deposit, Withdraw ya Game mein koi problem aa rahi hai, toh direct Admin se baat karein:\n\n💬 *Contact:* {SUPPORT_USERNAME}\n⏳ *Reply Time:* 24/7 Available"
-            markup = InlineKeyboardMarkup().add(InlineKeyboardButton("🔙 Back", callback_data="back_main", **{'style': 'danger'}))
+            markup = InlineKeyboardMarkup().add(InlineKeyboardButton("🔙 Back", callback_data="back_main", style="danger"))
             bot_main.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
         elif call.data == "promo_menu":
             update_user(user_id, state="wait_promo")
@@ -331,11 +330,12 @@ def wingo_menu(call):
         markup.row(InlineKeyboardButton(f"🔄 Refresh Timer (⏳ {time_left}s left)", callback_data=f"wingo_{mode}"))
         markup.row(InlineKeyboardButton("📊 Game History (Trends)", callback_data=f"trend_{mode}"))
 
-        nums = [InlineKeyboardButton(str(i), callback_data=f"bet_{i}_{mode}", **{'style': 'success'}) for i in range(10)]
+        # Add colors to number buttons
+        nums = [InlineKeyboardButton(str(i), callback_data=f"bet_{i}_{mode}", style="primary") for i in range(10)]
         markup.add(*nums)
-        markup.row(InlineKeyboardButton("GREEN", callback_data=f"bet_grn_{mode}", **{'style': 'success'}), InlineKeyboardButton("RED", callback_data=f"bet_red_{mode}", **{'style': 'danger'}), InlineKeyboardButton("VIOLET", callback_data=f"bet_vio_{mode}", **{'style': 'primary'}))
-        markup.row(InlineKeyboardButton("BIG", callback_data=f"bet_big_{mode}", **{'style': 'primary'}), InlineKeyboardButton("SMALL", callback_data=f"bet_sml_{mode}", **{'style': 'primary'}))
-        markup.add(InlineKeyboardButton("🔙 Back", callback_data="back_main", **{'style': 'danger'}))
+        markup.row(InlineKeyboardButton("GREEN", callback_data=f"bet_grn_{mode}", style="success"), InlineKeyboardButton("RED", callback_data=f"bet_red_{mode}", style="danger"), InlineKeyboardButton("VIOLET", callback_data=f"bet_vio_{mode}", style="primary"))
+        markup.row(InlineKeyboardButton("BIG", callback_data=f"bet_big_{mode}", style="primary"), InlineKeyboardButton("SMALL", callback_data=f"bet_sml_{mode}", style="primary"))
+        markup.add(InlineKeyboardButton("🔙 Back", callback_data="back_main", style="danger"))
         
         text = f"🎮 *WINGO {mode} MIN*\n🆔 *Period:* `{period_id}`\n⏳ *Time Remaining:* `{time_left} Seconds`\n💰 *Balance:* `₹{balance}`\n\n👇 Apna Prediction chunein:"
         bot_main.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
@@ -397,8 +397,8 @@ def finance_menus(call):
             send_main_menu(user_id, call.from_user.first_name)
         elif call.data == "deposit":
             markup = InlineKeyboardMarkup()
-            markup.row(InlineKeyboardButton("₹100", callback_data="dep_100", **{'style': 'success'}), InlineKeyboardButton("₹299", callback_data="dep_299", **{'style': 'success'}))
-            markup.row(InlineKeyboardButton("₹599", callback_data="dep_599", **{'style': 'success'}), InlineKeyboardButton("₹999", callback_data="dep_999", **{'style': 'success'}))
+            markup.row(InlineKeyboardButton("₹100", callback_data="dep_100", style="success"), InlineKeyboardButton("₹299", callback_data="dep_299", style="success"))
+            markup.row(InlineKeyboardButton("₹599", callback_data="dep_599", style="success"), InlineKeyboardButton("₹999", callback_data="dep_999", style="success"))
             bot_main.send_message(user_id, "Deposit Amount select karein:", reply_markup=markup)
         elif call.data == "withdraw":
             update_user(user_id, state="wait_with_amt")
@@ -437,7 +437,7 @@ def handle_inputs(message):
         if message.content_type == 'photo':
             bot_main.send_message(user_id, "⏳ Admin approval ka wait karein.")
             markup = InlineKeyboardMarkup()
-            markup.row(InlineKeyboardButton("✅ Approve", callback_data=f"dapp_{user_id}_{temp}", **{'style': 'success'}), InlineKeyboardButton("❌ Reject", callback_data=f"drej_{user_id}", **{'style': 'danger'}))
+            markup.row(InlineKeyboardButton("✅ Approve", callback_data=f"dapp_{user_id}_{temp}", style="success"), InlineKeyboardButton("❌ Reject", callback_data=f"drej_{user_id}", style="danger"))
             try:
                 file_info = bot_main.get_file(message.photo[-1].file_id)
                 downloaded_file = bot_main.download_file(file_info.file_path)
@@ -462,7 +462,7 @@ def handle_inputs(message):
             return bot_main.send_message(user_id, "⚠️ *WARNING!* Galat Details!\nSahi UPI ID ya 10-digit Phone Number daalein.", parse_mode="Markdown")
             
         amt = float(temp); markup = InlineKeyboardMarkup()
-        markup.row(InlineKeyboardButton("✅ Approve", callback_data=f"wapp_{user_id}_{amt}", **{'style': 'success'}), InlineKeyboardButton("❌ Reject", callback_data=f"wrej_{user_id}_{amt}", **{'style': 'danger'}))
+        markup.row(InlineKeyboardButton("✅ Approve", callback_data=f"wapp_{user_id}_{amt}", style="success"), InlineKeyboardButton("❌ Reject", callback_data=f"wrej_{user_id}_{amt}", style="danger"))
         try:
             bot_withdraw.send_message(ADMIN_ID, f"📤 *WITHDRAW REQUEST*\n\nUser: `{user_id}`\nAmount: ₹{amt}\nUPI/Phone: `{upi_or_phone}`", reply_markup=markup, parse_mode="Markdown")
             bot_main.send_message(user_id, "⏳ Payment In Pending... Admin check kar rahe hain.")
