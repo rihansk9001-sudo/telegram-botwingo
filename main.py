@@ -20,8 +20,7 @@ def custom_to_dict(self):
     return d
 InlineKeyboardButton.to_dict = custom_to_dict
 
-# ================= 1. NAYE TOKENS & DB CONFIG =================
-# Supabase PostgreSQL Link (Data kabhi delete nahi hoga)
+# ================= 1. TOKENS & DB CONFIG =================
 DATABASE_URL = "postgresql://postgres.jhhmwbivhohvcicyuxqe:mQcGVnP7gMFHQjYE@aws-1-ap-southeast-1.pooler.supabase.com:6543/postgres?sslmode=require"
 
 MAIN_TOKEN = "8212871280:AAHHsiW9snxpv6g7pdY-ManWIVxuemFbWW4"
@@ -31,12 +30,10 @@ PREDICTION_TOKEN = "8781003969:AAFysf9fPDa2_ptakcU8sVOcZI2UTRid2cc"
 ADMIN_ID = 1484173564
 PREDICTION_CHANNEL = "@predictoin_profit_bot" 
 SUPPORT_USERNAME = "@BOTTREADINGSUPPORT" 
-
-# Refer link ke liye apne Main Bot ka Username yahan likhein (bina @ ke)
 BOT_USERNAME = "CLOUR_TREADING_PROFIT_BOT" 
 
-bot_main = telebot.TeleBot(MAIN_TOKEN, num_threads=3)
-bot_finance = telebot.TeleBot(FINANCE_TOKEN, num_threads=2)
+bot_main = telebot.TeleBot(MAIN_TOKEN, num_threads=5)
+bot_finance = telebot.TeleBot(FINANCE_TOKEN, num_threads=3)
 bot_deposit = bot_finance
 bot_withdraw = bot_finance
 bot_prediction = telebot.TeleBot(PREDICTION_TOKEN)
@@ -47,6 +44,14 @@ try:
     bot_prediction.remove_webhook()
     time.sleep(1)
 except: pass
+
+# ================= SAFE ANSWER SHIELD =================
+# Ye function buttons ko kabhi freeze nahi hone dega
+def safe_answer(call, bot=bot_main):
+    try:
+        bot.answer_callback_query(call.id)
+    except:
+        pass
 
 # ================= 2. POSTGRESQL CLOUD DATABASE =================
 try:
@@ -191,8 +196,8 @@ def create_promo(message):
 
 @bot_main.callback_query_handler(func=lambda call: call.data.startswith("admin_"))
 def admin_actions(call):
+    safe_answer(call)
     try:
-        bot_main.answer_callback_query(call.id)
         action = call.data.split("_")[1]
         if action == "add_channel" or action == "add":
             msg = bot_main.send_message(ADMIN_ID, "Step 1: Bot ko channel me Admin banayein.\nStep 2: Channel ka ID (e.g. -100123...) bhejein:")
@@ -208,7 +213,8 @@ def admin_actions(call):
         elif action == "broadcast":
             msg = bot_main.send_message(ADMIN_ID, "📢 Jo message sabko bhejna hai, wo type karein:")
             bot_main.register_next_step_handler(msg, process_broadcast)
-    except Exception as e: print("Admin Action Error:", e)
+    except Exception as e:
+        bot_main.send_message(call.message.chat.id, f"⚠️ Error: {e}")
 
 def process_broadcast(message):
     conn = get_db()
@@ -254,13 +260,13 @@ def verify_admin_and_ask_color(message):
         else:
             bot_main.send_message(ADMIN_ID, f"❌ *Error:* Bot channel mein hai, lekin *Administrator* nahi hai. Pehle Admin banao.", parse_mode="Markdown")
             
-    except ApiTelegramException as e:
-        bot_main.send_message(ADMIN_ID, f"❌ *Error Chat Verify:* {e.description}", parse_mode="Markdown")
+    except Exception as e:
+        bot_main.send_message(ADMIN_ID, f"❌ *Error:* {e}", parse_mode="Markdown")
 
 @bot_main.callback_query_handler(func=lambda call: call.data.startswith("setcol_"))
 def save_channel_final(call):
+    safe_answer(call)
     try:
-        bot_main.answer_callback_query(call.id)
         color_style = call.data.split("_")[1]
         _, _, temp_data, _ = get_user(ADMIN_ID)
         if temp_data:
@@ -273,7 +279,8 @@ def save_channel_final(call):
             finally: release_db(conn)
             bot_main.edit_message_text(f"✅ Channel '{title}' add ho gaya!", call.message.chat.id, call.message.message_id)
             update_user(ADMIN_ID, state="idle", temp_data="")
-    except Exception as e: print("Set Color Error:", e)
+    except Exception as e:
+        bot_main.send_message(call.message.chat.id, f"⚠️ Error: {e}")
 
 # ================= 4. JOIN REQUEST AUTO-APPROVE =================
 @bot_main.chat_join_request_handler()
@@ -330,7 +337,7 @@ def user_start(message):
 
 @bot_main.callback_query_handler(func=lambda call: call.data == "check_join")
 def recheck_join(call):
-    bot_main.answer_callback_query(call.id)
+    safe_answer(call)
     bot_main.delete_message(call.message.chat.id, call.message.message_id)
     user_start(call.message)
 
@@ -364,8 +371,8 @@ def send_main_menu(user_id, name):
 
 @bot_main.callback_query_handler(func=lambda call: call.data in ["refer", "profile", "support", "promo_menu"])
 def extra_menus(call):
+    safe_answer(call)
     try:
-        bot_main.answer_callback_query(call.id)
         user_id = call.from_user.id
         balance, _, _, ref_count = get_user(user_id)
         
@@ -390,10 +397,12 @@ def extra_menus(call):
         elif call.data == "promo_menu":
             update_user(user_id, state="wait_promo")
             bot_main.send_message(user_id, "🎁 *PROMO CODE*\n\nKripya apna Promo Code yahan type karein:", parse_mode="Markdown")
-    except Exception as e: print("Extra Menu Error:", e)
+    except Exception as e:
+        bot_main.send_message(call.message.chat.id, f"⚠️ Menu Error: {e}")
 
 @bot_main.callback_query_handler(func=lambda call: call.data == "claim_referral")
 def claim_ref_bonus(call):
+    safe_answer(call)
     try:
         user_id = call.from_user.id
         bal, _, _, ref_count = get_user(user_id)
@@ -401,18 +410,19 @@ def claim_ref_bonus(call):
             new_ref = ref_count - 15
             new_bal = bal + 15
             update_user(user_id, balance=new_bal, refer_count=new_ref)
-            bot_main.answer_callback_query(call.id, "🎉 CONGRATULATIONS! ₹15 added to your wallet!", show_alert=True)
+            bot_main.send_message(user_id, "🎉 CONGRATULATIONS! ₹15 added to your wallet!")
             bot_main.delete_message(call.message.chat.id, call.message.message_id)
             send_main_menu(user_id, call.from_user.first_name)
         else:
-            bot_main.answer_callback_query(call.id, "❌ Pehle 15 Refer completely karo fir milega!", show_alert=True)
-    except Exception as e: print("Claim Bonus Error:", e)
+            bot_main.send_message(user_id, "❌ Pehle 15 Refer completely karo fir milega!")
+    except Exception as e:
+        bot_main.send_message(call.message.chat.id, f"⚠️ Ref Error: {e}")
 
 # ================= 6. WINGO GAME UI =================
 @bot_main.callback_query_handler(func=lambda call: call.data.startswith("wingo_"))
 def wingo_menu(call):
+    safe_answer(call)
     try:
-        bot_main.answer_callback_query(call.id) 
         user_id = call.from_user.id
         mode = call.data.split("_")[1]
         balance, _, _, _ = get_user(user_id)
@@ -448,10 +458,11 @@ def wingo_menu(call):
         
         bot_main.edit_message_text(text, call.message.chat.id, call.message.message_id, reply_markup=markup, parse_mode="Markdown")
     except Exception as e: 
-        print(f"Wingo Menu Error: {e}")
+        bot_main.send_message(call.message.chat.id, f"⚠️ Wingo Error: {e}")
 
 @bot_main.callback_query_handler(func=lambda call: call.data.startswith("trend_"))
 def show_trends(call):
+    safe_answer(call)
     try:
         mode = call.data.split("_")[1]
         conn = get_db()
@@ -462,7 +473,7 @@ def show_trends(call):
         finally: release_db(conn)
         
         if not records:
-            bot_main.answer_callback_query(call.id, "Thoda wait karein, pehla round khatam hone par history update hogi!", show_alert=True)
+            bot_main.send_message(call.message.chat.id, "Thoda wait karein, pehla round khatam hone par history update hogi!")
             return
             
         text = f"📊 *WINGO {mode} MIN - GAME HISTORY*\n━━━━━━━━━━━━━━━━━━\n`Period` | `Num` | `Size` | `Color`\n──────────────────\n"
@@ -470,12 +481,13 @@ def show_trends(call):
             period_short = r[0][-5:] 
             text += f"`{period_short}` | `{r[1]}` | `{r[2].upper()}` | `{r[3]}`\n"
             
-        bot_main.answer_callback_query(call.id)
         bot_main.send_message(call.message.chat.id, text, parse_mode="Markdown")
-    except Exception as e: print("Trend Error:", e)
+    except Exception as e:
+        bot_main.send_message(call.message.chat.id, f"⚠️ Trend Error: {e}")
 
 @bot_main.callback_query_handler(func=lambda call: call.data.startswith("bet_"))
 def ask_bet_amount(call):
+    safe_answer(call)
     try:
         user_id = call.from_user.id
         mode = call.data.split("_")[-1]
@@ -488,19 +500,19 @@ def ask_bet_amount(call):
         time_left = expected_end_time - current_time
         
         if time_left <= 10:
-            bot_main.answer_callback_query(call.id, "⚠️ Betting is closed for this period! Please wait for next.", show_alert=True)
+            bot_main.send_message(user_id, "⚠️ Betting is closed for this period! Please wait for next.")
             return
 
-        bot_main.answer_callback_query(call.id)
         update_user(user_id, state="wait_bet", temp_data=call.data)
         bot_main.send_message(user_id, f"🆔 *Period:* `{period_id}`\n💰 Kitna amount lagana hai? (Limit: ₹10 - ₹10,000)", parse_mode="Markdown")
-    except Exception as e: print("Bet Menu Error:", e)
+    except Exception as e:
+        bot_main.send_message(call.message.chat.id, f"⚠️ Bet Error: {e}")
 
 # ================= 7. HISTORY, DEPOSIT & PROMO LOGIC =================
 @bot_main.callback_query_handler(func=lambda call: call.data == "history")
 def show_history(call):
+    safe_answer(call)
     try:
-        bot_main.answer_callback_query(call.id)
         user_id = call.from_user.id
         conn = get_db()
         try:
@@ -514,12 +526,13 @@ def show_history(call):
         hist_text = "📜 *Aapki Recent Bet History:*\n\n"
         for r in records: hist_text += f"🔹 *{r[0]}* | ₹{r[1]}\n📝 Detail: {r[2]}\n🕒 {r[3]}\n➖➖➖➖➖➖\n"
         bot_main.send_message(user_id, hist_text, parse_mode="Markdown")
-    except Exception as e: print("History Error:", e)
+    except Exception as e:
+        bot_main.send_message(call.message.chat.id, f"⚠️ History Error: {e}")
 
 @bot_main.callback_query_handler(func=lambda call: call.data in ["deposit", "withdraw", "back_main"])
 def finance_menus(call):
+    safe_answer(call)
     try:
-        bot_main.answer_callback_query(call.id)
         user_id = call.from_user.id
         if call.data == "back_main":
             bot_main.delete_message(call.message.chat.id, call.message.message_id)
@@ -532,16 +545,18 @@ def finance_menus(call):
         elif call.data == "withdraw":
             update_user(user_id, state="wait_with_amt")
             bot_main.send_message(user_id, "Kitna amount withdraw karna hai? (Min 100)")
-    except Exception as e: print("Finance Menu Error:", e)
+    except Exception as e:
+        bot_main.send_message(call.message.chat.id, f"⚠️ Menu Error: {e}")
 
 @bot_main.callback_query_handler(func=lambda call: call.data.startswith("dep_"))
 def show_qr(call):
+    safe_answer(call)
     try:
-        bot_main.answer_callback_query(call.id)
         amt = call.data.split("_")[1]
         update_user(call.from_user.id, state="wait_ss", temp_data=amt)
         bot_main.send_photo(call.from_user.id, photo="https://files.catbox.moe/zhw20j.jpg", caption=f"₹{amt} pay karein aur Screen shot send karo.")
-    except Exception as e: print("Show QR Error:", e)
+    except Exception as e:
+        bot_main.send_message(call.message.chat.id, f"⚠️ QR Error: {e}")
 
 @bot_main.message_handler(content_types=['text', 'photo'])
 def handle_inputs(message):
@@ -582,9 +597,9 @@ def handle_inputs(message):
                 caption_text = f"📥 *NEW DEPOSIT REQUEST*\n\n👤 User ID: `{user_id}`\n💰 Amount: `₹{temp}`"
                 try:
                     bot_deposit.send_photo(ADMIN_ID, photo=downloaded_file, caption=caption_text, reply_markup=markup, parse_mode="Markdown")
-                except Exception as ex:
+                except:
                     bot_main.send_message(user_id, "❌ Admin ka deposit bot abhi start nahi hai. Please admin se bolo /start dabayein.")
-            except Exception as e:
+            except:
                 bot_main.send_message(user_id, "❌ Screenshot process karne me dikkat aayi.")
                 
             update_user(user_id, state="idle", temp_data="")
@@ -606,7 +621,7 @@ def handle_inputs(message):
         check_num = upi_or_phone.replace(" ", "")
         
         if "@" not in upi_or_phone and not (check_num.isdigit() and len(check_num) >= 10):
-            bot_main.send_message(user_id, "⚠️ *WARNING!* Galat Details!\n\nSahi UPI ID (e.g. `naam@ybl`) ya 10-digit Phone Number daalein. Kuch bhi text mat bhejein.", parse_mode="Markdown")
+            bot_main.send_message(user_id, "⚠️ *WARNING!* Galat Details!\n\nSahi UPI ID (e.g. `naam@ybl`) ya 10-digit Phone Number daalein.", parse_mode="Markdown")
             return 
             
         amt = float(temp)
@@ -622,8 +637,8 @@ def handle_inputs(message):
                 conn.cursor().execute("INSERT INTO history (user_id, action, amount, detail) VALUES (%s, 'Withdraw Requested', %s, %s)", (user_id, amt, f"UPI: {upi_or_phone}"))
                 conn.commit()
             finally: release_db(conn)
-        except Exception as e:
-            bot_main.send_message(user_id, f"❌ Withdraw request fail ho gayi. Admin ka withdraw bot chalu nahi hai!")
+        except:
+            bot_main.send_message(user_id, f"❌ Withdraw request fail ho gayi.")
             update_user(user_id, state="idle", temp_data="")
             return
 
@@ -658,8 +673,8 @@ def handle_inputs(message):
 # ================= 8. ADMIN APPROVAL BOTS =================
 @bot_deposit.callback_query_handler(func=lambda call: call.data.split('_')[0] in ["dapp", "drej", "wapp", "wrej"])
 def finance_admin(call):
+    safe_answer(call, bot_deposit)
     try:
-        bot_deposit.answer_callback_query(call.id)
         data = call.data.split("_")
         action = data[0]
         user_id = int(data[1])
@@ -704,16 +719,12 @@ def finance_admin(call):
             
             bot_withdraw.edit_message_text(f"❌ Withdraw Rejected", call.message.chat.id, call.message.message_id)
             bot_main.send_message(user_id, "❌ Withdraw Reject ho gaya hai. Balance wapas add kar diya gaya hai.")
-    except Exception as e: print("Finance Admin Error:", e)
+    except Exception as e:
+        bot_deposit.send_message(call.message.chat.id, f"⚠️ Admin Error: {e}")
 
 # ================= 9. ADVANCED POPUP IMAGE GENERATOR =================
 def get_best_font(size, bold=False):
-    paths = [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf" if bold else "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-        "arial.ttf"
-    ]
+    paths = ["/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "arial.ttf"]
     for p in paths:
         try: return ImageFont.truetype(p, size)
         except: pass
@@ -790,7 +801,7 @@ def run_game_engine(mode, total_seconds):
                     try:
                         msg = f"🔮 *LIVE WINGO {mode} MIN PREDICTION*\n\n🆔 Period: `{period_id}`\n🎯 Expected Color: *{color_text}*\n🎯 Expected Size: *{size.upper()}*\n🔢 Expected Number: *{number}*\n\n⏳ Result in {time_left} Seconds! Bet Now!"
                         bot_prediction.send_message(PREDICTION_CHANNEL, msg, parse_mode="Markdown")
-                    except Exception as e: pass
+                    except: pass
             finally: release_db(conn)
 
             number_str = str(number)
@@ -865,7 +876,7 @@ if __name__ == "__main__":
         time.sleep(1)
     except: pass
     
-    # 🚨 skip_pending=True purane click spam ko ignore karega jisse bot crash na ho
+    # Fast Polling Start
     threading.Thread(target=lambda: bot_main.infinity_polling(skip_pending=True)).start()
     threading.Thread(target=lambda: bot_finance.infinity_polling(skip_pending=True)).start()
     
